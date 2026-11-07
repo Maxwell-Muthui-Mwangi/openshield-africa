@@ -18,8 +18,10 @@ const {loginBucketKey}=await import('../../server/login-limit.js');
 test('authenticated workflow persists only verified-domain assessments and isolates tenants', {timeout:30000}, async()=>{
  const host='example.org';
  const scanned=[];
+ const messages=[];
  const app=createApp({
   rateLimitMax:100,
+  sendMail:async message=>{messages.push(message)},
   checkOwnership:async(hostname,token)=>hostname===host&&/^[a-f0-9]{48}$/.test(token),
   runAssessment:async hostname=>{
    scanned.push(hostname);
@@ -54,6 +56,18 @@ test('authenticated workflow persists only verified-domain assessments and isola
   r=await request('POST','/api/auth/register',{email:second,password});
   assert.equal(r.status,201);
   process.env.REGISTRATION_ENABLED='false';
+  r=await request('POST','/api/auth/login',{email:first,password});
+  assert.equal(r.status,403);
+  assert.equal(messages.length,2);
+  for(const message of messages.slice(0,2)){
+   const link=message.text.match(/https?:\\/\\/\\S+/)?.[0];
+   assert.ok(link,'verification link should be delivered to test mailer');
+   const token=new URL(link).searchParams.get('token');
+   r=await request('POST','/api/auth/verify-email',{token});
+   assert.equal(r.status,200);
+   r=await request('POST','/api/auth/verify-email',{token});
+   assert.equal(r.status,400,'verification token must be single-use');
+  }
 
   r=await request('POST','/api/auth/login',{email:first,password:'incorrect credentials'});
   assert.equal(r.status,401);
@@ -121,6 +135,24 @@ test('authenticated workflow persists only verified-domain assessments and isola
   r=await request('POST','/api/domains/'+id+'/verify',{token:renewedToken},cookieA);
   assert.equal(r.status,200);
 
+  // Account recovery does not disclose whether a user exists.
+  r=await request('POST','/api/auth/forgot-password',{email:'missing-'+prefix+'@example.org'});
+  assert.equal(r.status,200);
+  r=await request('POST','/api/auth/forgot-password',{email:first});
+  assert.equal(r.status,200);
+  const resetLink=messages.at(-1).text.match(/https?:\\/\\/\\S+/)?.[0];
+  const resetToken=new URL(resetLink).searchParams.get('token');
+  r=await request('POST','/api/auth/reset-password',{token:resetToken,password:'a new strong recovery password!'});
+  assert.equal(r.status,200);
+  r=await request('POST','/api/auth/reset-password',{token:resetToken,password:'another strong password!'});
+  assert.equal(r.status,400,'reset token must be single-use');
+  r=await request('GET','/api/auth/me',null,cookieA);
+  assert.equal(r.status,401,'password recovery revokes existing sessions');
+  r=await request('POST','/api/auth/login',{email:first,password});
+  assert.equal(r.status,401);
+  r=await request('POST','/api/auth/login',{email:first,password:'a new strong recovery password!'});
+  assert.equal(r.status,200);
+  cookieA=r.cookie;
   r=await request('POST','/api/auth/logout',{},cookieA);
   assert.equal(r.status,200);
   r=await request('GET','/api/auth/me',null,cookieA);
