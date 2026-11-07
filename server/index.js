@@ -1,54 +1,50 @@
 import http from 'node:http';
 import dns from 'node:dns/promises';
-import net from 'node:net';
 import https from 'node:https';
 import {evaluate} from './checks.js';
+import {validateTarget,isPublicIPv4,limitWindow} from './safety.js';
 
 const PORT=Number(process.env.PORT||8787);
 const HOST='127.0.0.1';
 const ALLOWED=(process.env.ALLOWED_DOMAINS||'').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean);
+const usage=new Map();
 
-function isPublic(ip){
- if(net.isIP(ip)===4){
-  const [a,b,c]=ip.split('.').map(Number);
-  return !(a===0||a===10||a===127||a>=224||a===169&&b===254||a===172&&b>=16&&b<=31||a===192&&b===168||a===100&&b>=64&&b<=127||a===192&&b===0||a===192&&b===0||a===198&&(b===18||b===19)||a===192&&b===88&&c===99||a===198&&b===51&&c===100||a===203&&b===0&&c===113);
- }
- if(net.isIP(ip)===6){const s=ip.toLowerCase();return !(s==='::1'||s==='::'||s.startsWith('fc')||s.startsWith('fd')||/^fe[89ab]/.test(s)||s.startsWith('::ffff:')||s.startsWith('2001:db8:'))}
- return false;
-}
-
-async function assess(input){
- const u=new URL(input);
- if(u.protocol!=='https:'||u.port||u.username||u.password||u.search||u.hash||u.pathname!=='/')throw Error('Only HTTPS domain roots are supported');
- const domain=u.hostname.toLowerCase();
- if(!ALLOWED.includes(domain))throw Error('Domain not allowlisted. Verify authorisation and configure ALLOWED_DOMAINS.');
- const addresses=await dns.lookup(domain,{all:true});
- if(!addresses.length||addresses.some(x=>!isPublic(x.address)))throw Error('Private or restricted network address blocked');
- const ip=addresses[0].address;
+async function assess(input) {
+ const {hostname,origin}=validateTarget(input,ALLOWED);
+ // Resolve every IPv4 record and fail closed if any address is restricted.
+ const addresses=await dns.resolve4(hostname);
+ if (!addresses.length || addresses.some(ip=>!isPublicIPv4(ip))) throw Error('Restricted or unresolved target IP address.');
+ const ip=addresses[0];
  const headers=await new Promise((resolve,reject)=>{
-  const req=https.request({hostname:domain,port:443,path:'/',method:'HEAD',timeout:5000,
-    lookup:(_hostname,_options,cb)=>cb(null,ip,net.isIP(ip)),
-    headers:{'User-Agent':'OpenShieldAfrica/0.1'}},
-    res=>{res.resume();resolve(new Headers(res.headers))});
-  req.on('timeout',()=>req.destroy(Error('Timeout')));
+  const req=https.request({hostname,port:443,path:'/',method:'HEAD',timeout:5000,
+   lookup:(_hostname,_options,cb)=>cb(null,ip,4),
+   headers:{'User-Agent':'OpenShieldAfrica/0.1'}},
+   res=>{res.resume();resolve(new Headers(res.headers))});
+  req.on('timeout',()=>req.destroy(Error('Assessment timed out.')));
   req.on('error',reject);
   req.end();
  });
- return {url:u.origin,...evaluate(headers)};
+ return {url:origin,assessedAt:new Date().toISOString(),...evaluate(headers)};
 }
 
 const server=http.createServer(async(req,res)=>{
- res.setHeader('Content-Type','application/json');
+ res.setHeader('Content-Type','application/json; charset=utf-8');
  res.setHeader('Cache-Control','no-store');
- if(req.url==='/api/health'&&req.method==='GET'){res.end(JSON.stringify({status:'ok'}));return}
- if(req.url!=='/api/assess'||req.method!=='POST'){res.writeHead(404);res.end('{}');return}
+ res.setHeader('X-Content-Type-Options','nosniff');
+ if(req.url==='/api/health'&&req.method==='GET'){res.end(JSON.stringify({status:'ok',scope:'local-only'}));return}
+ if(req.url!=='/api/assess'||req.method!=='POST'){res.writeHead(404);res.end(JSON.stringify({error:'Not found'}));return}
+ const key=req.socket.remoteAddress||'local';
+ const {next,allowed}=limitWindow(Date.now(),usage.get(key));
+ usage.set(key,next);
+ if(!allowed){res.writeHead(429,{'Retry-After':'60'});res.end(JSON.stringify({error:'Assessment request limit reached. Try later.'}));return}
+ if(usage.size>100){for(const [ip,entry] of usage){if(Date.now()-entry.start>60000)usage.delete(ip)}}
  let raw='';
  try{
-  for await(const chunk of req){raw+=chunk;if(raw.length>4096)throw Error('Payload too large')}
+  if(req.headers['content-type']?.split(';')[0].trim()!=='application/json')throw Error('JSON content type required.');
+  for await(const chunk of req){raw+=chunk;if(raw.length>4096)throw Error('Request too large.')}
   const body=JSON.parse(raw);
-  if(typeof body.url!=='string')throw Error('Provide a valid URL');
   const result=await assess(body.url);
   res.end(JSON.stringify(result));
  }catch(error){res.writeHead(400);res.end(JSON.stringify({error:error.message}))}
 });
-server.listen(PORT,HOST,()=>console.log(`OpenShield API at http://${HOST}:${PORT}`));
+server.listen(PORT,HOST,()=>console.log(`OpenShield API bound to http://${HOST}:${PORT}`));
