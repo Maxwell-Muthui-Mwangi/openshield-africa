@@ -161,6 +161,11 @@ test('authenticated workflow persists only verified-domain assessments and isola
   assert.equal(r.status,200);
   r=await request('POST','/api/auth/reset-password',{token:resetToken,password:'another strong password!'});
   assert.equal(r.status,400,'reset token must be single-use');
+  const simultaneous=await Promise.all([
+   request('POST','/api/auth/reset-password',{token:resetToken,password:'a third password for racing!'}),
+   request('POST','/api/auth/reset-password',{token:resetToken,password:'a fourth password for racing!'})
+  ]);
+  assert.deepEqual(simultaneous.map(x=>x.status),[400,400]);
   r=await request('GET','/api/auth/me',null,cookieA);
   assert.equal(r.status,401,'password recovery revokes existing sessions');
   r=await request('POST','/api/auth/login',{email:first,password});
