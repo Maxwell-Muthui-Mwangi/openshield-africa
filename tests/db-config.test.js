@@ -18,3 +18,13 @@ test('rejects invalid connection configuration',()=>{
  assert.throws(()=>databaseConfig({DATABASE_URL:url,DB_MODE:'dual'}));
  assert.throws(()=>databaseConfig({DATABASE_URL:url,DB_POOL_MAX:'100'}));
 });
+
+test('managed profile removes URL sslmode overrides and retains verified TLS',()=>{
+ const {config}=databaseConfig({DB_MODE:'managed',DATABASE_URL:url+'?sslmode=disable'});
+ assert.equal(config.connectionString.includes('sslmode='),false);
+ assert.equal(config.ssl.rejectUnauthorized,true);
+});
+test('custom CA is used for managed TLS',()=>{
+ const {config}=databaseConfig({DB_MODE:'managed',DATABASE_URL:url,DATABASE_CA_FILE:'/ca.pem'},()=> 'TEST_CA');
+ assert.equal(config.ssl.ca,'TEST_CA');
+});
