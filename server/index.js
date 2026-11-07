@@ -83,7 +83,7 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
   if(req.url==='/api/auth/resend-verification'&&req.method==='POST'){
    const body=await readBody(req);
    const email=String(body.email||'').trim().toLowerCase();
-   if(email.length<=254&&/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)&&await allowEmailRequest(dbQuery,'resend',email,req.socket.remoteAddress||'unknown')){
+   if(email.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)&&await allowEmailRequest(dbQuery,'resend',email,req.socket.remoteAddress||'unknown')){
     const found=await dbQuery('SELECT id FROM users WHERE email=$1 AND email_verified_at IS NULL',[email]);
     if(found.rows.length){
      const token=await issueEmailToken(dbQuery,found.rows[0].id,'verify');
