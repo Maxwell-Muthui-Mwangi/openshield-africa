@@ -60,7 +60,7 @@ test('authenticated workflow persists only verified-domain assessments and isola
   assert.equal(r.status,403);
   assert.equal(messages.length,2);
   for(const message of messages.slice(0,2)){
-   const link=message.text.match(/https?:\\/\\/\\S+/)?.[0];
+   const link=message.text.split(' ').at(-1);
    assert.ok(link,'verification link should be delivered to test mailer');
    const token=new URL(link).searchParams.get('token');
    r=await request('POST','/api/auth/verify-email',{token});
@@ -140,7 +140,7 @@ test('authenticated workflow persists only verified-domain assessments and isola
   assert.equal(r.status,200);
   r=await request('POST','/api/auth/forgot-password',{email:first});
   assert.equal(r.status,200);
-  const resetLink=messages.at(-1).text.match(/https?:\\/\\/\\S+/)?.[0];
+  const resetLink=messages.at(-1).text.split(' ').at(-1);
   const resetToken=new URL(resetLink).searchParams.get('token');
   r=await request('POST','/api/auth/reset-password',{token:resetToken,password:'a new strong recovery password!'});
   assert.equal(r.status,200);
