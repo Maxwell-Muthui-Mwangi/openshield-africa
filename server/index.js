@@ -35,14 +35,19 @@ async function userFromRequest(req,dbQuery){
  return result.rows[0]||null;
 }
 async function assess(hostname){
+ if(process.env.LOCAL_SCAN_ENABLED!=='true'||process.env.NODE_ENV==='production')throw Error('Live network assessments are disabled by default.');
  const addresses=await dns.resolve4(hostname);
  if(!addresses.length||addresses.some(ip=>!isPublicIPv4(ip)))throw Error('Restricted or unresolved target address.');
+ // Refuse IPv6-capable targets until IPv6 egress validation is independently reviewed.
+ let ipv6=[];
+ try{ipv6=await dns.resolve6(hostname)}catch(error){if(!['ENODATA','ENOTFOUND','ENODOMAIN'].includes(error.code))throw error}
+ if(ipv6.length)throw Error('IPv6-capable targets are not supported by the current scanner.');
  const ip=addresses[0];
  const headers=await new Promise((resolve,reject)=>{
-  const req=https.request({hostname,port:443,path:'/',method:'HEAD',timeout:5000,
+  const req=https.request({hostname,port:443,path:'/',method:'HEAD',timeout:5000,maxRedirects:0,
    lookup:(_hostname,_options,cb)=>cb(null,ip,4),
    headers:{'User-Agent':'OpenShieldAfrica/0.2'}},
-   res=>{res.resume();resolve(new Headers(res.headers))});
+   res=>{res.resume();if(res.statusCode>=300&&res.statusCode<400)return reject(Error('Redirects are not followed during assessments.'));resolve(new Headers(res.headers))});
   req.on('timeout',()=>req.destroy(Error('Assessment timed out.')));
   req.on('error',reject);req.end();
  });
