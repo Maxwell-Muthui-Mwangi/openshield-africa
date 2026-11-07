@@ -56,6 +56,7 @@ const server=http.createServer(async(req,res)=>{
   if(usage.size>100){for(const [ip,item] of usage){if(Date.now()-item.start>60000)usage.delete(ip)}}
   if(req.method==='POST')requireMutationOrigin(req);
   if(req.url==='/api/auth/register'&&req.method==='POST'){
+   if(process.env.REGISTRATION_ENABLED!=='true')return json(res,403,{error:'Registration is disabled. An administrator must enable it.'});
    const body=await readBody(req);
    const email=String(body.email||'').trim().toLowerCase();
    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)throw Error('Valid email required.');
@@ -101,11 +102,19 @@ const server=http.createServer(async(req,res)=>{
    await query('UPDATE domains SET verified_at=now() WHERE id=$1 AND user_id=$2',[domain.id,user.id]);
    return json(res,200,{verified:true,hostname:domain.hostname});
   }
+  const renew=req.url?.match(/^\/api\/domains\/([0-9a-f-]{36})\/renew$/);
+  if(renew&&req.method==='POST'){
+   const token=randomBytes(24).toString('hex');
+   const result=await query('UPDATE domains SET challenge_hash=$1,verified_at=NULL WHERE id=$2 AND user_id=$3 RETURNING id,hostname',[hashChallenge(token),renew[1],user.id]);
+   if(!result.rows.length)return json(res,404,{error:'Domain not found.'});
+   const domain=result.rows[0];
+   return json(res,200,{domain,dnsRecord:{name:'_openshield-challenge.'+domain.hostname,type:'TXT',value:'openshield-verification='+token}});
+  }
   if(req.url==='/api/assess'&&req.method==='POST'){
    const body=await readBody(req);
    const target=validateTarget(body.url,[new URL(body.url).hostname.toLowerCase()]);
-   const found=await query('SELECT id FROM domains WHERE user_id=$1 AND hostname=$2 AND verified_at IS NOT NULL',[user.id,target.hostname]);
-   if(!found.rows.length)return json(res,403,{error:'Domain ownership must be verified before assessment.'});
+   const found=await query("SELECT id FROM domains WHERE user_id=$1 AND hostname=$2 AND verified_at > now() - interval '30 days'",[user.id,target.hostname]);
+   if(!found.rows.length)return json(res,403,{error:'Domain ownership verification is missing or older than 30 days. Renew the DNS challenge before assessing.'});
    const report=await assess(target.hostname);
    const stored=await query('INSERT INTO assessments(user_id,domain_id,score,findings) VALUES($1,$2,$3,$4::jsonb) RETURNING id,created_at',[user.id,found.rows[0].id,report.score,JSON.stringify(report)]);
    return json(res,200,{...report,id:stored.rows[0].id});
