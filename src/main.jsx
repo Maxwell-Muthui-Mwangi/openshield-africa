@@ -38,6 +38,13 @@ function App(){
    setAuthPath('/');
   }catch(e){setError(e.message)}
  }
+ async function resendVerification(){
+  setError('');setNotice('');
+  try{
+   const data=await request('/api/auth/resend-verification',{method:'POST',body:JSON.stringify({email})});
+   setNotice(data.message);
+  }catch(e){setError(e.message)}
+ }
  async function forgotPassword(){
   setError('');setNotice('');
   try{
@@ -144,7 +151,7 @@ function App(){
     <p>Accounts and verified domain ownership are required before real assessments.</p>
     <input aria-label="Email address" type="email" placeholder="Email address" value={email} onChange={e=>setEmail(e.target.value)}/>
     <input aria-label="Password" type="password" placeholder="Password (minimum 12 characters)" value={password} onChange={e=>setPassword(e.target.value)}/>
-    <div className="authbuttons"><button type="button" onClick={()=>auth('login')}>Sign in</button><button type="button" className="outline" onClick={()=>auth('register')}>Create account</button><button type="button" className="outline" onClick={forgotPassword}>Forgot password?</button></div>
+    <div className="authbuttons"><button type="button" onClick={()=>auth('login')}>Sign in</button><button type="button" className="outline" onClick={()=>auth('register')}>Create account</button><button type="button" className="outline" onClick={forgotPassword}>Forgot password?</button><button type="button" className="outline" onClick={resendVerification}>Resend verification</button></div>
    </section>:<section className="authpanel">
     <div className="sectionhead"><h3>Signed in as {user.email}</h3><button className="outline" type="button" onClick={signOut}>Sign out</button></div>
     <div className="sectionhead"><h3>Registered domains</h3><button type="button" className="outline" onClick={addDomain}>Register domain from URL below</button></div>
