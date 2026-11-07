@@ -1,4 +1,6 @@
-import {createTransport} from 'nodemailer';
+import nodemailer from 'nodemailer';
+import {resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 export function smtpConfiguration(env=process.env){
  const {SMTP_HOST,SMTP_PORT,SMTP_USER,SMTP_PASSWORD,MAIL_FROM}=env;
@@ -10,8 +12,8 @@ export function smtpConfiguration(env=process.env){
   auth:SMTP_USER?{user:SMTP_USER,pass:SMTP_PASSWORD}:undefined};
 }
 
-if(process.argv[1]&&import.meta.url===new URL('file://'+process.argv[1]).href){
- const transport=createTransport(smtpConfiguration());
+if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+ const transport=nodemailer.createTransport(smtpConfiguration());
  try{
   await transport.verify();
   console.log('SMTP transport verified: connection, TLS and authentication succeeded. No email sent.');
