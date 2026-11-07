@@ -12,6 +12,8 @@ import {canonicalHostname,checkDnsOwnership,hashChallenge} from './ownership.js'
 import {consumeLoginBudget,resetSuccessfulAccountBudget} from './login-limit.js';
 import {issueEmailToken,consumeEmailToken,authLink} from './email-tokens.js';
 import {sendAuthEmail} from './mailer.js';
+import {finalizeEmailToken} from './finalize-token.js';
+import {allowEmailRequest} from './mail-limit.js';
 
 const PORT=Number(process.env.PORT||8787);
 const HOST='127.0.0.1';
@@ -50,7 +52,7 @@ function requireMutationOrigin(req){
  const expected=process.env.APP_ORIGIN||'http://localhost:5173';
  if(origin!==expected)throw Error('Invalid request origin.');
 }
-export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAssessment=assess,rateLimitMax=20,sendMail=sendAuthEmail}={}){
+export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAssessment=assess,rateLimitMax=20,sendMail=sendAuthEmail,finishToken=finalizeEmailToken}={}){
  const usage=new Map();
  return http.createServer(async(req,res)=>{
  try{
@@ -74,15 +76,26 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
   }
   if(req.url==='/api/auth/verify-email'&&req.method==='POST'){
    const body=await readBody(req);
-   const userId=await consumeEmailToken(dbQuery,body.token,'verify');
-   if(!userId)return json(res,400,{error:'Verification link is invalid or expired.'});
-   await dbQuery('UPDATE users SET email_verified_at=now() WHERE id=$1',[userId]);
+   const completed=await finishToken(body.token,'verify');
+   if(!completed)return json(res,400,{error:'Verification link is invalid or expired.'});
    return json(res,200,{message:'Email verified. You can now sign in.'});
+  }
+  if(req.url==='/api/auth/resend-verification'&&req.method==='POST'){
+   const body=await readBody(req);
+   const email=String(body.email||'').trim().toLowerCase();
+   if(email.length<=254&&/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)&&await allowEmailRequest(dbQuery,'resend',email,req.socket.remoteAddress||'unknown')){
+    const found=await dbQuery('SELECT id FROM users WHERE email=$1 AND email_verified_at IS NULL',[email]);
+    if(found.rows.length){
+     const token=await issueEmailToken(dbQuery,found.rows[0].id,'verify');
+     await sendMail({to:email,subject:'Verify your OpenShield Africa email',text:'Verify your account: '+authLink(process.env.APP_ORIGIN||'http://localhost:5173','/verify-email',token)});
+    }
+   }
+   return json(res,200,{message:'If the account needs verification, an email will be sent.'});
   }
   if(req.url==='/api/auth/forgot-password'&&req.method==='POST'){
    const body=await readBody(req);
    const email=String(body.email||'').trim().toLowerCase();
-   if(email.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
+   if(email.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)&&await allowEmailRequest(dbQuery,'reset',email,req.socket.remoteAddress||'unknown')){
     const found=await dbQuery('SELECT id FROM users WHERE email=$1 AND email_verified_at IS NOT NULL',[email]);
     if(found.rows.length){
      const token=await issueEmailToken(dbQuery,found.rows[0].id,'reset');
@@ -94,10 +107,8 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
   if(req.url==='/api/auth/reset-password'&&req.method==='POST'){
    const body=await readBody(req);
    const passwordHash=await hashPassword(body.password);
-   const userId=await consumeEmailToken(dbQuery,body.token,'reset');
-   if(!userId)return json(res,400,{error:'Recovery link is invalid or expired.'});
-   await dbQuery('UPDATE users SET password_hash=$1 WHERE id=$2',[passwordHash,userId]);
-   await dbQuery('DELETE FROM sessions WHERE user_id=$1',[userId]);
+   const completed=await finishToken(body.token,'reset',passwordHash);
+   if(!completed)return json(res,400,{error:'Recovery link is invalid or expired.'});
    return json(res,200,{message:'Password changed. Sign in again.'});
   }
   if(req.url==='/api/auth/login'&&req.method==='POST'){
