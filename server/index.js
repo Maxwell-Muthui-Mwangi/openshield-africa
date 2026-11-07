@@ -9,6 +9,7 @@ import {validateTarget,isPublicIPv4,limitWindow} from './safety.js';
 import {query} from './database.js';
 import {hashPassword,verifyPassword,newToken,sessionHash,sessionCookie,readSessionCookie} from './auth.js';
 import {canonicalHostname,checkDnsOwnership,hashChallenge} from './ownership.js';
+import {consumeLoginBudget,resetSuccessfulAccountBudget} from './login-limit.js';
 
 const PORT=Number(process.env.PORT||8787);
 const HOST='127.0.0.1';
@@ -69,11 +70,15 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
   }
   if(req.url==='/api/auth/login'&&req.method==='POST'){
    const body=await readBody(req);const email=String(body.email||'').trim().toLowerCase();
+   if(email.length>254||typeof body.password!=='string'||body.password.length>256)return json(res,401,{error:'Invalid credentials.'});
+   const budget=await consumeLoginBudget(dbQuery,email,req.socket.remoteAddress||'unknown');
+   if(!budget.allowed)return json(res,429,{error:'Too many login attempts. Try again later.'},{'Retry-After':'900'});
    const result=await dbQuery('SELECT id,email,password_hash FROM users WHERE email=$1',[email]);
    const user=result.rows[0];
    if(!user||!await verifyPassword(body.password,user.password_hash))return json(res,401,{error:'Invalid credentials.'});
    const token=newToken();
    await dbQuery("INSERT INTO sessions(token_hash,user_id,expires_at) VALUES($1,$2,now()+interval '7 days')",[sessionHash(token),user.id]);
+   await resetSuccessfulAccountBudget(dbQuery,email);
    return json(res,200,{user:{id:user.id,email:user.email}},{'Set-Cookie':sessionCookie(token,secureCookie)});
   }
   const user=await userFromRequest(req,dbQuery);
