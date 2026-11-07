@@ -14,6 +14,7 @@ import {issueEmailToken,consumeEmailToken,authLink} from './email-tokens.js';
 import {sendAuthEmail} from './mailer.js';
 import {finalizeEmailToken} from './finalize-token.js';
 import {allowEmailRequest} from './mail-limit.js';
+import {validateDeployment} from './deployment.js';
 
 const PORT=Number(process.env.PORT||8787);
 const HOST='127.0.0.1';
@@ -191,5 +192,6 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
 }
 export const server=createApp();
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+ validateDeployment();
  server.listen(PORT,HOST,()=>console.log(`OpenShield local API at http://${HOST}:${PORT}`));
 }
