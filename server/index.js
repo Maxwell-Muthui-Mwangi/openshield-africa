@@ -82,7 +82,7 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
   if(req.url==='/api/auth/forgot-password'&&req.method==='POST'){
    const body=await readBody(req);
    const email=String(body.email||'').trim().toLowerCase();
-   if(email.length<=254&&/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)){
+   if(email.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){
     const found=await dbQuery('SELECT id FROM users WHERE email=$1 AND email_verified_at IS NOT NULL',[email]);
     if(found.rows.length){
      const token=await issueEmailToken(dbQuery,found.rows[0].id,'reset');
