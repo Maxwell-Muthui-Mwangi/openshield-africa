@@ -13,6 +13,7 @@ process.env.APP_ORIGIN='http://localhost:5173';
 
 const {createApp}=await import('../../server/index.js');
 const {database,query}=await import('../../server/database.js');
+const {loginBucketKey}=await import('../../server/login-limit.js');
 
 test('authenticated workflow persists only verified-domain assessments and isolates tenants', {timeout:30000}, async()=>{
  const host='example.org';
@@ -63,6 +64,19 @@ test('authenticated workflow persists only verified-domain assessments and isola
   assert.equal(r.status,200);cookieB=r.cookie;
   r=await request('GET','/api/auth/me',null,cookieA);
   assert.equal(r.status,200);assert.equal(r.data.user.email,first);
+
+  // Persistent failed-login budgets deny even a valid password after lockout.
+  for(let i=0;i<5;i++){
+   r=await request('POST','/api/auth/login',{email:first,password:'incorrect credentials'});
+   assert.equal(r.status,401);
+  }
+  r=await request('POST','/api/auth/login',{email:first,password:'incorrect credentials'});
+  assert.equal(r.status,429);
+  r=await request('POST','/api/auth/login',{email:first,password});
+  assert.equal(r.status,429);
+  await query('DELETE FROM login_buckets WHERE bucket_key=$1',[loginBucketKey('account',first)]);
+  r=await request('POST','/api/auth/login',{email:first,password});
+  assert.equal(r.status,200);
 
   r=await request('POST','/api/domains',{url:'https://example.org'},cookieA);
   assert.equal(r.status,201);
