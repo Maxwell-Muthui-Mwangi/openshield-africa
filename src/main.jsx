@@ -26,6 +26,25 @@ function App(){
  const [challenge,setChallenge]=useState(null);
  const [verificationToken,setVerificationToken]=useState('');
  const [notice,setNotice]=useState('');
+ const [authToken,setAuthToken]=useState(new URLSearchParams(window.location.search).get('token')||'');
+ const [authPath,setAuthPath]=useState(window.location.pathname);
+ async function completeEmailAction(){
+  setError('');setNotice('');
+  try{
+   const endpoint=authPath==='/verify-email'?'verify-email':'reset-password';
+   const data=await request('/api/auth/'+endpoint,{method:'POST',body:JSON.stringify({token:authToken,...(endpoint==='reset-password'?{password}:{})})});
+   setNotice(data.message);setAuthToken('');
+   window.history.replaceState({},'', '/');
+   setAuthPath('/');
+  }catch(e){setError(e.message)}
+ }
+ async function forgotPassword(){
+  setError('');setNotice('');
+  try{
+   const data=await request('/api/auth/forgot-password',{method:'POST',body:JSON.stringify({email})});
+   setNotice(data.message);
+  }catch(e){setError(e.message)}
+ }
  async function request(path,options={}){
   const response=await fetch(path,{credentials:'same-origin',...options,headers:{'Content-Type':'application/json',...options.headers}});
   const data=await response.json();
@@ -36,7 +55,7 @@ function App(){
   setError('');setNotice('');
   try{
    const data=await request('/api/auth/'+mode,{method:'POST',body:JSON.stringify({email,password})});
-   if(mode==='register'){setNotice('Account created. Sign in to continue.');return}
+   if(mode==='register'){setNotice(data.message);return}
    setUser(data.user);setPassword('');await refresh();
   }catch(e){setError(e.message)}
  }
@@ -114,12 +133,18 @@ function App(){
     <ShieldCheck size={102} strokeWidth={1}/>
    </section>
    <div className="sectionhead"><h2>Organisation workspace</h2><span>Local development · PostgreSQL</span></div>
+   {(authPath==='/verify-email'||authPath==='/reset-password')&&<section className="authpanel">
+    <h3>{authPath==='/verify-email'?'Verify your email':'Reset your password'}</h3>
+    <p>Use the one-time link from your email. Links expire automatically.</p>
+    {authPath==='/reset-password'&&<input aria-label="New password" type="password" placeholder="New password (12+ characters)" value={password} onChange={e=>setPassword(e.target.value)}/>}
+    <button type="button" onClick={completeEmailAction}>{authPath==='/verify-email'?'Verify email':'Change password'}</button>
+   </section>}
    {!user?<section className="authpanel">
     <h3>Sign in or create an account</h3>
     <p>Accounts and verified domain ownership are required before real assessments.</p>
     <input aria-label="Email address" type="email" placeholder="Email address" value={email} onChange={e=>setEmail(e.target.value)}/>
     <input aria-label="Password" type="password" placeholder="Password (minimum 12 characters)" value={password} onChange={e=>setPassword(e.target.value)}/>
-    <div className="authbuttons"><button type="button" onClick={()=>auth('login')}>Sign in</button><button type="button" className="outline" onClick={()=>auth('register')}>Create account</button></div>
+    <div className="authbuttons"><button type="button" onClick={()=>auth('login')}>Sign in</button><button type="button" className="outline" onClick={()=>auth('register')}>Create account</button><button type="button" className="outline" onClick={forgotPassword}>Forgot password?</button></div>
    </section>:<section className="authpanel">
     <div className="sectionhead"><h3>Signed in as {user.email}</h3><button className="outline" type="button" onClick={signOut}>Sign out</button></div>
     <div className="sectionhead"><h3>Registered domains</h3><button type="button" className="outline" onClick={addDomain}>Register domain from URL below</button></div>
