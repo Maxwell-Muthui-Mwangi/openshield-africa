@@ -8,7 +8,7 @@ Requirements: Node.js 22+, npm, Docker with Compose (or PostgreSQL 15+).
 4. Run `npm install`, then `npm run db:migrate`.
 5. Set `APP_ORIGIN=http://localhost:5173`.
 6. Start `npm run api` and in another terminal `npm run dev`.
-7. Open http://localhost:5173, register an account and sign in.
+7. For initial local account creation only, set `REGISTRATION_ENABLED=true` on the API process, register an account, then restart the API with `REGISTRATION_ENABLED=false`. Sign in.
 8. Enter the HTTPS root of a domain you control, then select **Register domain**.
 9. Publish the displayed DNS TXT record. DNS changes may take time to propagate.
 10. Select **Verify DNS ownership**, then consent and run the read-only assessment.
