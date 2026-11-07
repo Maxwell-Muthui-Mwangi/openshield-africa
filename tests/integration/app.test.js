@@ -59,7 +59,15 @@ test('authenticated workflow persists only verified-domain assessments and isola
   r=await request('POST','/api/auth/login',{email:first,password});
   assert.equal(r.status,403);
   assert.equal(messages.length,2);
-  for(const message of messages.slice(0,2)){
+  r=await request('POST','/api/auth/resend-verification',{email:first});
+  assert.equal(r.status,200);
+  assert.equal(messages.length,3);
+  // The resend rotates the first account's verification token.
+  const staleToken=new URL(messages[0].text.split(' ').at(-1)).searchParams.get('token');
+  r=await request('POST','/api/auth/verify-email',{token:staleToken});
+  assert.equal(r.status,400);
+  const verificationMessages=[messages[2],messages[1]];
+  for(const message of verificationMessages){
    const link=message.text.split(' ').at(-1);
    assert.ok(link,'verification link should be delivered to test mailer');
    const token=new URL(link).searchParams.get('token');
@@ -140,6 +148,13 @@ test('authenticated workflow persists only verified-domain assessments and isola
   assert.equal(r.status,200);
   r=await request('POST','/api/auth/forgot-password',{email:first});
   assert.equal(r.status,200);
+  const sentBeforeThrottle=messages.length;
+  for(let i=0;i<4;i++){
+   r=await request('POST','/api/auth/forgot-password',{email:first});
+   assert.equal(r.status,200);
+  }
+  assert.equal(messages.length,sentBeforeThrottle+2,'recovery request budget limits delivery');
+  // Use the most recent delivered recovery link, not a suppressed request.
   const resetLink=messages.at(-1).text.split(' ').at(-1);
   const resetToken=new URL(resetLink).searchParams.get('token');
   r=await request('POST','/api/auth/reset-password',{token:resetToken,password:'a new strong recovery password!'});
