@@ -17,7 +17,7 @@ const PORT=Number(process.env.PORT||8787);
 const HOST='127.0.0.1';
 const secureCookie=process.env.COOKIE_SECURE==='true';
 function json(res,status,data,headers={}){
- res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff',...headers});
+ res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'none'; frame-ancestors 'none'",...headers});
  res.end(JSON.stringify(data));
 }
 async function readBody(req){
