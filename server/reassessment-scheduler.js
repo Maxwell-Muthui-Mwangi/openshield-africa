@@ -51,7 +51,10 @@ export async function processReassessmentBatch(pool,{runAssessment,limit=3}){
   let code=null;
   try{
    // This uses the same tenant authorization, proof validation and safe scanner as manual assessments.
-   const assessment=await assessOrganizationAsset(pool,{orgId:job.organization_id,assetId:job.asset_id,userId:job.authorized_by,runAssessment});
+   const assessment=await assessOrganizationAsset(pool,{orgId:job.organization_id,assetId:job.asset_id,userId:job.authorized_by,runAssessment,executionGuard:async client=>{
+    const guard=await client.query('SELECT 1 FROM organization_reassessment_schedules WHERE id=$1 AND lease_id=$2 AND enabled=true AND cancelled_at IS NULL AND lease_until>now() FOR UPDATE',[job.id,job.lease_id]);
+    return guard.rowCount===1;
+   }});
    if(!assessment)code='ACCESS_REVOKED';
   }catch(e){code='ASSESSMENT_FAILED'}
   // Lease fencing prevents an expired worker from acknowledging a newer claim.
