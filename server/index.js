@@ -6,7 +6,8 @@ import https from 'node:https';
 import {randomBytes} from 'node:crypto';
 import {evaluate} from './checks.js';
 import {validateTarget,isPublicIPv4,limitWindow} from './safety.js';
-import {query} from './database.js';
+import {query,database} from './database.js';
+import {createOrganization,listOrganizations,organizationMembers,organizationAccess} from './organizations.js';
 import {hashPassword,verifyPassword,newToken,sessionHash,sessionCookie,readSessionCookie} from './auth.js';
 import {canonicalHostname,checkDnsOwnership,hashChallenge} from './ownership.js';
 import {consumeLoginBudget,resetSuccessfulAccountBudget} from './login-limit.js';
@@ -59,7 +60,7 @@ function requireMutationOrigin(req){
  const expected=process.env.APP_ORIGIN||'http://localhost:5173';
  if(origin!==expected)throw Error('Invalid request origin.');
 }
-export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAssessment=assess,rateLimitMax=20,sendMail=sendAuthEmail,finishToken=finalizeEmailToken,queueMail=queueAuthEmail}={}){
+export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAssessment=assess,rateLimitMax=20,sendMail=sendAuthEmail,finishToken=finalizeEmailToken,queueMail=queueAuthEmail,orgPool=database()}={}){
  const usage=new Map();
  return http.createServer(async(req,res)=>{
  try{
@@ -136,6 +137,29 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
    const token=readSessionCookie(req.headers.cookie);
    if(token)await dbQuery('DELETE FROM sessions WHERE token_hash=$1',[sessionHash(token)]);
    return json(res,200,{ok:true},{'Set-Cookie':'openshield_session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0'});
+  }
+  // Organization resources are membership-gated. Personal domains and reports
+  // deliberately remain scoped to their original owner until a reviewed migration.
+  if(req.url==='/api/organizations'&&req.method==='GET'){
+   return json(res,200,{organizations:await listOrganizations(dbQuery,user.id)});
+  }
+  if(req.url==='/api/organizations'&&req.method==='POST'){
+   if(process.env.ORGANIZATIONS_ENABLED!=='true')return json(res,403,{error:'Organization creation is disabled.'});
+   const body=await readBody(req);
+   const organization=await createOrganization({name:body.name,slug:body.slug,userId:user.id},orgPool);
+   return json(res,201,{organization});
+  }
+  const orgMembers=req.url?.match(/^\\/api\\/organizations\\/([0-9a-f-]{36})\\/members$/);
+  if(orgMembers&&req.method==='GET'){
+   const members=await organizationMembers(dbQuery,orgMembers[1],user.id);
+   return members===null?json(res,404,{error:'Organization not found.'}):json(res,200,{members});
+  }
+  const orgDetail=req.url?.match(/^\\/api\\/organizations\\/([0-9a-f-]{36})$/);
+  if(orgDetail&&req.method==='GET'){
+   const role=await organizationAccess(dbQuery,orgDetail[1],user.id);
+   if(!role)return json(res,404,{error:'Organization not found.'});
+   const result=await dbQuery('SELECT id,name,slug,created_at FROM organizations WHERE id=$1',[orgDetail[1]]);
+   return json(res,200,{organization:{...result.rows[0],role}});
   }
   if(req.url==='/api/domains'&&req.method==='GET'){
    const result=await dbQuery('SELECT id,hostname,verified_at,created_at FROM domains WHERE user_id=$1 ORDER BY created_at DESC',[user.id]);
