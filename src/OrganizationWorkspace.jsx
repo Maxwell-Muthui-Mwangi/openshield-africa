@@ -7,7 +7,7 @@ export default function OrganizationWorkspace({request,user}){
  const [name,setName]=useState(''),[slug,setSlug]=useState(''),[url,setUrl]=useState('');
  const [inviteEmail,setInviteEmail]=useState(''),[inviteRole,setInviteRole]=useState('viewer');
  const [challenge,setChallenge]=useState(null),[message,setMessage]=useState(''),[error,setError]=useState('');
- const [invitation,setInvitation]=useState(null);
+ const [invitation,setInvitation]=useState(null),[securityReport,setSecurityReport]=useState(null);
  async function loadOrgs(){const d=await request('/api/organizations');setOrgs(d.organizations);setSelected(s=>s||d.organizations[0]?.id||'')}
  async function loadWorkspace(id){
   if(!id)return;
@@ -16,7 +16,7 @@ export default function OrganizationWorkspace({request,user}){
   setDashboard(d.dashboard);setMembers(m.members);setAssets(a.assets);setAudit(log.events);
  }
  useEffect(()=>{loadOrgs().catch(e=>setError(e.message))},[user?.id]);
- useEffect(()=>{setDashboard(null);setAssets([]);setMembers([]);setAudit([]);loadWorkspace(selected).catch(e=>setError(e.message))},[selected]);
+ useEffect(()=>{setDashboard(null);setAssets([]);setMembers([]);setAudit([]);setSecurityReport(null);loadWorkspace(selected).catch(e=>setError(e.message))},[selected]);
  async function action(fn){
   setError('');setMessage('');
   try{await fn();if(selected)await loadWorkspace(selected)}catch(e){setError(e.message)}
@@ -55,6 +55,15 @@ export default function OrganizationWorkspace({request,user}){
    </div>)}
    {['owner','admin'].includes(dashboard.role)&&<div className="org-controls"><input aria-label="Invite email" placeholder="Team member email" value={inviteEmail} onChange={e=>setInviteEmail(e.target.value)}/><select aria-label="Invitation role" value={inviteRole} onChange={e=>setInviteRole(e.target.value)}>{['viewer','analyst',...(dashboard.role==='owner'?['admin']:[])].map(r=><option key={r}>{r}</option>)}</select><button type="button" onClick={()=>action(async()=>{const r=await post(base+'/invitations',{email:inviteEmail,role:inviteRole});setInvitation(r.invitation);setInviteEmail('')})}>Create invitation</button></div>}
    {invitation&&<div className="dnsbox"><strong>Private staging invitation token</strong><p>Share securely with the intended recipient. This is not a public invitation workflow.</p><code>{invitation.token}</code><button className="outline" type="button" onClick={()=>setInvitation(null)}>Hide token</button></div>}
+   <h4>Security reporting and remediation</h4>
+   <p>Only assessments performed against currently DNS-verified assets are recorded. Live assessment is restricted to explicitly enabled local testing.</p>
+   <button type="button" className="outline" onClick={()=>action(async()=>{const r=await request(base+'/report');setSecurityReport(r.report)})}>Load security report</button>
+   {securityReport&&<>
+    <p>{securityReport.assessments.length} recorded assessments · {securityReport.remediations.filter(r=>r.status!=='resolved').length} open or in-progress remediation items</p>
+    {securityReport.assessments.slice(0,10).map(a=><div className="org-line" key={a.id}><span>{a.hostname} · Configuration score {a.score}/100</span><small>{new Date(a.created_at).toLocaleString()}</small></div>)}
+    {securityReport.remediations.slice(0,50).map(r=><div className="org-line" key={r.id}><span>{r.finding_key} · {r.severity}</span><select aria-label={'Remediation '+r.finding_key} value={r.status} onChange={e=>action(async()=>{await post(base+'/remediations/'+r.id,{status:e.target.value});const next=await request(base+'/report');setSecurityReport(next.report)})}>{['open','in_progress','resolved'].map(s=><option key={s} value={s}>{s}</option>)}</select></div>)}
+    <button type="button" className="outline" onClick={()=>{const blob=new Blob([JSON.stringify(securityReport,null,2)],{type:'application/json'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='openshield-security-report.json';a.click();URL.revokeObjectURL(u)}}><FileText size={15}/> Export security report (JSON)</button>
+   </>}
    <h4>Recent activity</h4>
    {audit.length===0?<p>No recorded organization activity.</p>:audit.map((e,i)=><div className="org-line" key={i}><span>{e.action}</span><small>{new Date(e.created_at).toLocaleString()}</small></div>)}
    <button type="button" className="outline" onClick={()=>{const blob=new Blob([JSON.stringify({organizationId:selected,generatedAt:new Date().toISOString(),dashboard,assets,audit},null,2)],{type:'application/json'});const u=URL.createObjectURL(blob);const a=document.createElement('a');a.href=u;a.download='openshield-organization-summary.json';a.click();URL.revokeObjectURL(u)}}><FileText size={15}/> Export organization summary</button>
