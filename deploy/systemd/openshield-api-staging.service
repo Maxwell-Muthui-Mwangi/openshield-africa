@@ -1,0 +1,30 @@
+[Unit]
+Description=OpenShield Africa private staging API (loopback only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openshield
+Group=openshield
+WorkingDirectory=/opt/openshield
+EnvironmentFile=/etc/openshield/staging.env
+Environment=NODE_ENV=staging
+ExecStartPre=/usr/bin/node /opt/openshield/scripts/staging-preflight.js
+ExecStart=/usr/bin/node /opt/openshield/server/index.js
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+LockPersonality=true
+RestrictSUIDSGID=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+# No [Install] section: intentionally not enabled at boot by default.
+# Bind only to loopback; expose solely through a separately reviewed TLS reverse proxy.
