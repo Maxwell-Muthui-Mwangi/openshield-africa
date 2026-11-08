@@ -14,6 +14,7 @@ process.env.APP_ORIGIN='http://localhost:5173';
 const {createApp}=await import('../../server/index.js');
 const {database,query}=await import('../../server/database.js');
 const {loginBucketKey}=await import('../../server/login-limit.js');
+const {issueEmailToken,authLink}=await import('../../server/email-tokens.js');
 
 test('authenticated workflow persists only verified-domain assessments and isolates tenants', {timeout:30000}, async()=>{
  const host='example.org';
@@ -21,7 +22,11 @@ test('authenticated workflow persists only verified-domain assessments and isola
  const messages=[];
  const app=createApp({
   rateLimitMax:100,
-  sendMail:async message=>{messages.push(message)},
+  queueMail:async({userId,email,purpose})=>{
+   const token=await issueEmailToken(query,userId,purpose);
+   const path=purpose==='verify'?'/verify-email':'/reset-password';
+   messages.push({to:email,text:'Link: '+authLink('http://localhost:5173',path,token)});
+  },
   checkOwnership:async(hostname,token)=>hostname===host&&/^[a-f0-9]{48}$/.test(token),
   runAssessment:async hostname=>{
    scanned.push(hostname);
