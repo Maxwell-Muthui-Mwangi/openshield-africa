@@ -10,7 +10,7 @@ export function prioritizeFindings(checks){
   recommendation:String(c.recommendation||'').slice(0,1000)
  })).filter(c=>c.key).sort((a,b)=>severityWeight[b.severity]-severityWeight[a.severity]);
 }
-export async function assessOrganizationAsset(pool,{orgId,assetId,userId,runAssessment}){
+export async function assessOrganizationAsset(pool,{orgId,assetId,userId,runAssessment,executionGuard=null}){
  const client=await pool.connect();
  try{
   const role=await organizationRole((sql,args)=>client.query(sql,args),orgId,userId);
@@ -29,6 +29,7 @@ export async function assessOrganizationAsset(pool,{orgId,assetId,userId,runAsse
    WHERE m.organization_id=$1 AND m.user_id=$2 AND m.role IN ('owner','admin','analyst')
     AND a.id=$3 AND a.verified_at>now()-interval '30 days'`,[orgId,userId,assetId]);
   if(!access.rows.length)throw Error('Authorization or DNS proof expired during assessment.');
+  if(executionGuard&&!await executionGuard(client))throw Error('Scheduled assessment was cancelled or superseded.');
   const stored=await client.query(`INSERT INTO organization_assessments(organization_id,asset_id,initiated_by,score,snapshot)
    VALUES($1,$2,$3,$4,$5::jsonb) RETURNING id,created_at`,[orgId,assetId,userId,report.score,JSON.stringify(report)]);
   for(const finding of findings){
