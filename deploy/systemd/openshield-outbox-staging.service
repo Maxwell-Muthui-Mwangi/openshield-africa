@@ -1,0 +1,25 @@
+[Unit]
+Description=OpenShield Africa private staging email outbox
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=openshield
+Group=openshield
+WorkingDirectory=/opt/openshield
+EnvironmentFile=/etc/openshield/staging.env
+ExecStart=/usr/bin/node /opt/openshield/scripts/outbox-daemon.js
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=180
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/openshield
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
