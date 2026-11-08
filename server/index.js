@@ -42,7 +42,7 @@ async function userFromRequest(req,dbQuery){
  const result=await dbQuery('SELECT u.id,u.email FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND s.expires_at>now()',[sessionHash(token)]);
  return result.rows[0]||null;
 }
-async function assess(hostname){
+export async function assess(hostname){
  if(process.env.LOCAL_SCAN_ENABLED!=='true'||process.env.NODE_ENV==='production')throw Error('Live network assessments are disabled by default.');
  const addresses=await dns.resolve4(hostname);
  if(!addresses.length||addresses.some(ip=>!isPublicIPv4(ip)))throw Error('Restricted or unresolved target address.');
