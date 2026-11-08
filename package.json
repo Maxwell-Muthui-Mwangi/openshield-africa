@@ -9,7 +9,7 @@
     "test": "node --test tests/*.test.js",
     "api": "node server/index.js",
     "db:migrate": "node scripts/migrate.js",
-    "test:integration": "node --test tests/integration/*.test.js",
+    "test:integration": "node --test --test-concurrency=1 tests/integration/*.test.js",
     "smtp:verify": "node scripts/check-smtp.js",
     "outbox:run": "node scripts/outbox-worker.js",
     "outbox:daemon": "node scripts/outbox-daemon.js"
