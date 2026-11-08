@@ -7,7 +7,7 @@ export async function configureReassessment(query,{orgId,assetId,userId,interval
  if(!['owner','admin'].includes(await organizationRole(query,orgId,userId)))return null;
  const r=await query(`INSERT INTO organization_reassessment_schedules
  (organization_id,asset_id,authorized_by,interval_hours,next_run_at,enabled)
- SELECT $1,a.id,$3,$4,now()+($4*interval '1 hour'),$5
+ SELECT $1,a.id,$3,$4,now()+($4::integer*interval '1 hour'),$5
  FROM organization_assets a WHERE a.id=$2 AND a.organization_id=$1
  AND a.verified_at>now()-interval '30 days'
  ON CONFLICT(organization_id,asset_id) DO UPDATE
