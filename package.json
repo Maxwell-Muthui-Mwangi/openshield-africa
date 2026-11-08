@@ -15,7 +15,8 @@
     "outbox:daemon": "node scripts/outbox-daemon.js",
     "reassess:run": "node scripts/reassessment-worker.js",
     "staging:verify": "node scripts/verify-private-staging.js",
-    "release:preflight": "node scripts/release-preflight.js"
+    "release:preflight": "node scripts/release-preflight.js",
+    "staging:preflight": "node scripts/staging-preflight.js"
   },
   "dependencies": {
     "vite": "^6.1.0",
