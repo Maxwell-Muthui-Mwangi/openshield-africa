@@ -11,7 +11,8 @@
     "db:migrate": "node scripts/migrate.js",
     "test:integration": "node --test tests/integration/*.test.js",
     "smtp:verify": "node scripts/check-smtp.js",
-    "outbox:run": "node scripts/outbox-worker.js"
+    "outbox:run": "node scripts/outbox-worker.js",
+    "outbox:daemon": "node scripts/outbox-daemon.js"
   },
   "dependencies": {
     "vite": "^6.1.0",
