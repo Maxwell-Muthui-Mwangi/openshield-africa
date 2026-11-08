@@ -60,7 +60,7 @@ function requireMutationOrigin(req){
  const expected=process.env.APP_ORIGIN||'http://localhost:5173';
  if(origin!==expected)throw Error('Invalid request origin.');
 }
-export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAssessment=assess,rateLimitMax=20,sendMail=sendAuthEmail,finishToken=finalizeEmailToken,queueMail=queueAuthEmail,orgPool=database()}={}){
+export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAssessment=assess,rateLimitMax=20,sendMail=sendAuthEmail,finishToken=finalizeEmailToken,queueMail=queueAuthEmail,orgPool=null}={}){
  const usage=new Map();
  return http.createServer(async(req,res)=>{
  try{
@@ -146,7 +146,7 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
   if(req.url==='/api/organizations'&&req.method==='POST'){
    if(process.env.ORGANIZATIONS_ENABLED!=='true')return json(res,403,{error:'Organization creation is disabled.'});
    const body=await readBody(req);
-   const organization=await createOrganization({name:body.name,slug:body.slug,userId:user.id},orgPool);
+   const organization=await createOrganization({name:body.name,slug:body.slug,userId:user.id},orgPool||database());
    return json(res,201,{organization});
   }
   const orgMembers=req.url?.match(/^\\/api\\/organizations\\/([0-9a-f-]{36})\\/members$/);
