@@ -18,8 +18,8 @@ import {finalizeEmailToken} from './finalize-token.js';
 import {allowEmailRequest} from './mail-limit.js';
 import {validateDeployment} from './deployment.js';
 import {queueAuthEmail} from './outbox.js';
-import {configureReassessment,listReassessments} from './reassessment-scheduler.js';
-import {addRemediationEvidence,listRemediationEvidence} from './remediation-evidence.js';
+import {configureReassessment,listReassessments,cancelReassessment} from './reassessment-scheduler.js';
+import {addRemediationEvidence,listRemediationEvidence,reviewRemediationEvidence} from './remediation-evidence.js';
 import {executivePdf} from './executive-pdf.js';
 import {assessOrganizationAsset,organizationReport,updateRemediation} from './organization-assessments.js';
 import {verifyOrganizationAsset,renewOrganizationAsset,organizationDashboard} from './organization-dashboard.js';
@@ -235,6 +235,17 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
     const body=await readBody(req);
     const schedule=await configureReassessment(dbQuery,{orgId:schedules[1],assetId:body.assetId,userId:user.id,intervalHours:body.intervalHours,enabled:body.enabled===true});
     return schedule?json(res,200,{schedule}):json(res,404,{error:'Asset unavailable or DNS proof expired.'});
+   }
+   const cancelSchedule=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/reassessments\/([0-9a-f-]{36})\/cancel$/);
+   if(cancelSchedule&&req.method==='POST'){
+    const cancelled=await cancelReassessment(dbQuery,{orgId:cancelSchedule[1],assetId:cancelSchedule[2],userId:user.id});
+    return cancelled?json(res,200,{schedule:cancelled}):json(res,404,{error:'Schedule not found.'});
+   }
+   const evidenceReview=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/evidence\/([0-9a-f-]{36})\/review$/);
+   if(evidenceReview&&req.method==='POST'){
+    const body=await readBody(req);
+    const reviewed=await reviewRemediationEvidence(dbQuery,{orgId:evidenceReview[1],evidenceId:evidenceReview[2],userId:user.id,status:body.status,note:body.note||''});
+    return reviewed?json(res,200,{evidence:reviewed}):json(res,404,{error:'Evidence unavailable for review.'});
    }
    const evidence=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/remediations\/([0-9a-f-]{36})\/evidence$/);
    if(evidence&&req.method==='GET'){
