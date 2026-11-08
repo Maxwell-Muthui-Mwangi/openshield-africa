@@ -22,7 +22,7 @@ export async function processOutboxBatch({pool=database(),sendMail=sendAuthEmail
   }catch(error){
    const dead=job.attempts>=job.max_attempts||new Date(job.expires_at)<=new Date();
    const seconds=Math.min(300,5*2**Math.min(job.attempts,6));
-   await pool.query("UPDATE email_outbox SET status=$2,available_at=now()+($3::int*interval '1 second'),lease_until=NULL,last_error_code=$4 WHERE id=$1 AND status='sending' AND attempts=$5",
+   await pool.query("UPDATE email_outbox SET status=$2,available_at=now()+($3::int*interval '1 second'),lease_until=NULL,last_error_code=$4,payload=CASE WHEN $2='dead' THEN '\\x'::bytea ELSE payload END,iv=CASE WHEN $2='dead' THEN '\\x'::bytea ELSE iv END,auth_tag=CASE WHEN $2='dead' THEN '\\x'::bytea ELSE auth_tag END WHERE id=$1 AND status='sending' AND attempts=$5",
     [job.id,dead?'dead':'pending',seconds,String(error.code||error.name||'delivery_error').slice(0,80),job.attempts]);
    failed++;
   }
