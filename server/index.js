@@ -15,6 +15,7 @@ import {sendAuthEmail} from './mailer.js';
 import {finalizeEmailToken} from './finalize-token.js';
 import {allowEmailRequest} from './mail-limit.js';
 import {validateDeployment} from './deployment.js';
+import {queueAuthEmail} from './outbox.js';
 
 const PORT=Number(process.env.PORT||8787);
 const HOST='127.0.0.1';
@@ -58,7 +59,7 @@ function requireMutationOrigin(req){
  const expected=process.env.APP_ORIGIN||'http://localhost:5173';
  if(origin!==expected)throw Error('Invalid request origin.');
 }
-export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAssessment=assess,rateLimitMax=20,sendMail=sendAuthEmail,finishToken=finalizeEmailToken}={}){
+export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAssessment=assess,rateLimitMax=20,sendMail=sendAuthEmail,finishToken=finalizeEmailToken,queueMail=queueAuthEmail}={}){
  const usage=new Map();
  return http.createServer(async(req,res)=>{
  try{
@@ -76,8 +77,7 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>254)throw Error('Valid email required.');
    const passwordHash=await hashPassword(body.password);
    const result=await dbQuery('INSERT INTO users(email,password_hash) VALUES($1,$2) RETURNING id,email',[email,passwordHash]);
-   const token=await issueEmailToken(dbQuery,result.rows[0].id,'verify');
-   await sendMail({to:email,subject:'Verify your OpenShield Africa email',text:'Verify your account: '+authLink(process.env.APP_ORIGIN||'http://localhost:5173','/verify-email',token)});
+   await queueMail({userId:result.rows[0].id,email,purpose:'verify'});
    return json(res,201,{message:'Account created. Check your email to verify it.'});
   }
   if(req.url==='/api/auth/verify-email'&&req.method==='POST'){
@@ -92,8 +92,7 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
    if(email.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)&&await allowEmailRequest(dbQuery,'resend',email,req.socket.remoteAddress||'unknown')){
     const found=await dbQuery('SELECT id FROM users WHERE email=$1 AND email_verified_at IS NULL',[email]);
     if(found.rows.length){
-     const token=await issueEmailToken(dbQuery,found.rows[0].id,'verify');
-     await sendMail({to:email,subject:'Verify your OpenShield Africa email',text:'Verify your account: '+authLink(process.env.APP_ORIGIN||'http://localhost:5173','/verify-email',token)});
+     await queueMail({userId:found.rows[0].id,email,purpose:'verify'});
     }
    }
    return json(res,200,{message:'If the account needs verification, an email will be sent.'});
@@ -104,8 +103,7 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
    if(email.length<=254&&/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)&&await allowEmailRequest(dbQuery,'reset',email,req.socket.remoteAddress||'unknown')){
     const found=await dbQuery('SELECT id FROM users WHERE email=$1 AND email_verified_at IS NOT NULL',[email]);
     if(found.rows.length){
-     const token=await issueEmailToken(dbQuery,found.rows[0].id,'reset');
-     await sendMail({to:email,subject:'Reset your OpenShield Africa password',text:'Reset your password: '+authLink(process.env.APP_ORIGIN||'http://localhost:5173','/reset-password',token)});
+     await queueMail({userId:found.rows[0].id,email,purpose:'reset'});
     }
    }
    return json(res,200,{message:'If the account is eligible, a recovery email will be sent.'});
