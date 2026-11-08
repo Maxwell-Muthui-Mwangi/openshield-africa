@@ -2,6 +2,7 @@ import React,{useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {ShieldCheck,Globe,Activity,Lock,CheckCircle2,AlertTriangle,ArrowRight,Download,FileCheck2} from 'lucide-react';
 import './style.css';
+import OrganizationWorkspace from './OrganizationWorkspace.jsx';
 
 const demo={url:'https://example.org',score:60,checks:[
 {name:'HTTPS enabled',status:'pass',severity:'high',detail:'Encrypted transport (illustrative).',recommendation:'Use HTTPS.'},
@@ -163,6 +164,7 @@ function App(){
     <h3>Recent assessments</h3>
     {history.length===0?<p>No saved assessments yet.</p>:history.map(item=><button className="historyrow" type="button" key={item.id} onClick={()=>loadReport(item.id)}>{item.hostname} · {item.score}/100 · {new Date(item.created_at).toLocaleString()}</button>)}
    </section>}
+   {user&&<OrganizationWorkspace request={request} user={user}/>}
    <div className="sectionhead"><h2>Website security assessment</h2><span>Verified domains only · read-only checks</span></div>
    <form className="search" onSubmit={assess}><Globe size={20}/>
     <input type="url" placeholder="https://your-authorised-domain.org" value={url} onChange={e=>setUrl(e.target.value)} required/>
