@@ -12,7 +12,8 @@
     "test:integration": "node --test --test-concurrency=1 tests/integration/*.test.js",
     "smtp:verify": "node scripts/check-smtp.js",
     "outbox:run": "node scripts/outbox-worker.js",
-    "outbox:daemon": "node scripts/outbox-daemon.js"
+    "outbox:daemon": "node scripts/outbox-daemon.js",
+    "reassess:run": "node scripts/reassessment-worker.js"
   },
   "dependencies": {
     "vite": "^6.1.0",
