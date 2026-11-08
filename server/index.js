@@ -18,6 +18,7 @@ import {finalizeEmailToken} from './finalize-token.js';
 import {allowEmailRequest} from './mail-limit.js';
 import {validateDeployment} from './deployment.js';
 import {queueAuthEmail} from './outbox.js';
+import {verifyOrganizationAsset,renewOrganizationAsset,organizationDashboard} from './organization-dashboard.js';
 
 const PORT=Number(process.env.PORT||8787);
 const HOST='127.0.0.1';
@@ -162,6 +163,11 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
    const result=await dbQuery('SELECT id,name,slug,created_at FROM organizations WHERE id=$1',[orgDetail[1]]);
    return json(res,200,{organization:{...result.rows[0],role}});
   }
+  const dashboard=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/dashboard$/);
+  if(dashboard&&req.method==='GET'){
+   const summary=await organizationDashboard(dbQuery,{orgId:dashboard[1],userId:user.id});
+   return summary?json(res,200,{dashboard:summary}):json(res,404,{error:'Organization not found.'});
+  }
   // Organization mutations are opt-in for private staging.
   if(process.env.ORGANIZATIONS_ENABLED==='true'){
    if(req.url==='/api/organizations/invitations/accept'&&req.method==='POST'){
@@ -190,6 +196,17 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
     const body=await readBody(req);
     const result=await addOrganizationAsset(orgPool||database(),{orgId:assets[1],actorId:user.id,url:body.url});
     return json(res,201,result);
+   }
+   const orgVerify=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/assets\/([0-9a-f-]{36})\/verify$/);
+   if(orgVerify&&req.method==='POST'){
+    const body=await readBody(req);
+    const verified=await verifyOrganizationAsset(dbQuery,{orgId:orgVerify[1],assetId:orgVerify[2],userId:user.id,token:body.token,checkOwnership});
+    return verified?json(res,200,{asset:verified}):json(res,404,{error:'Asset not found.'});
+   }
+   const orgRenew=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/assets\/([0-9a-f-]{36})\/renew$/);
+   if(orgRenew&&req.method==='POST'){
+    const renewed=await renewOrganizationAsset(dbQuery,{orgId:orgRenew[1],assetId:orgRenew[2],userId:user.id});
+    return renewed?json(res,200,renewed):json(res,404,{error:'Asset not found.'});
    }
    const audit=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/audit$/);
    if(audit&&req.method==='GET'){
