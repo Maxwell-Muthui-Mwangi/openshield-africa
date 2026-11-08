@@ -149,12 +149,12 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
    const organization=await createOrganization({name:body.name,slug:body.slug,userId:user.id},orgPool||database());
    return json(res,201,{organization});
   }
-  const orgMembers=req.url?.match(/^\\/api\\/organizations\\/([0-9a-f-]{36})\\/members$/);
+  const orgMembers=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/members$/);
   if(orgMembers&&req.method==='GET'){
    const members=await organizationMembers(dbQuery,orgMembers[1],user.id);
    return members===null?json(res,404,{error:'Organization not found.'}):json(res,200,{members});
   }
-  const orgDetail=req.url?.match(/^\\/api\\/organizations\\/([0-9a-f-]{36})$/);
+  const orgDetail=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})$/);
   if(orgDetail&&req.method==='GET'){
    const role=await organizationAccess(dbQuery,orgDetail[1],user.id);
    if(!role)return json(res,404,{error:'Organization not found.'});
