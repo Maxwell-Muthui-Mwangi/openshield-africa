@@ -18,6 +18,9 @@ import {finalizeEmailToken} from './finalize-token.js';
 import {allowEmailRequest} from './mail-limit.js';
 import {validateDeployment} from './deployment.js';
 import {queueAuthEmail} from './outbox.js';
+import {configureReassessment,listReassessments} from './reassessment-scheduler.js';
+import {addRemediationEvidence,listRemediationEvidence} from './remediation-evidence.js';
+import {executivePdf} from './executive-pdf.js';
 import {assessOrganizationAsset,organizationReport,updateRemediation} from './organization-assessments.js';
 import {verifyOrganizationAsset,renewOrganizationAsset,organizationDashboard} from './organization-dashboard.js';
 
@@ -174,6 +177,19 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
    const result=await organizationReport(dbQuery,{orgId:orgReport[1],userId:user.id});
    return result?json(res,200,{report:result}):json(res,404,{error:'Organization not found.'});
   }
+  const pdfReport=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/report\.pdf$/);
+  if(pdfReport&&req.method==='GET'){
+   const result=await organizationReport(dbQuery,{orgId:pdfReport[1],userId:user.id});
+   if(!result)return json(res,404,{error:'Organization not found.'});
+   const pdf=executivePdf(result);
+   res.writeHead(200,{'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="openshield-executive-report.pdf"','Content-Length':pdf.length,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+   return res.end(pdf);
+  }
+  const schedules=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/reassessments$/);
+  if(schedules&&req.method==='GET'){
+   const result=await listReassessments(dbQuery,{orgId:schedules[1],userId:user.id});
+   return result?json(res,200,{schedules:result}):json(res,404,{error:'Organization not found.'});
+  }
   // Organization mutations are opt-in for private staging.
   if(process.env.ORGANIZATIONS_ENABLED==='true'){
    if(req.url==='/api/organizations/invitations/accept'&&req.method==='POST'){
@@ -214,6 +230,21 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
     const body=await readBody(req);
     const result=await updateRemediation(dbQuery,{orgId:orgRemediation[1],remediationId:orgRemediation[2],userId:user.id,status:body.status});
     return result?json(res,200,{remediation:result}):json(res,404,{error:'Remediation not found.'});
+   }
+   if(schedules&&req.method==='POST'){
+    const body=await readBody(req);
+    const schedule=await configureReassessment(dbQuery,{orgId:schedules[1],assetId:body.assetId,userId:user.id,intervalHours:body.intervalHours,enabled:body.enabled===true});
+    return schedule?json(res,200,{schedule}):json(res,404,{error:'Asset unavailable or DNS proof expired.'});
+   }
+   const evidence=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/remediations\/([0-9a-f-]{36})\/evidence$/);
+   if(evidence&&req.method==='GET'){
+    const rows=await listRemediationEvidence(dbQuery,{orgId:evidence[1],remediationId:evidence[2],userId:user.id});
+    return rows?json(res,200,{evidence:rows}):json(res,404,{error:'Organization not found.'});
+   }
+   if(evidence&&req.method==='POST'){
+    const body=await readBody(req);
+    const result=await addRemediationEvidence(dbQuery,{orgId:evidence[1],remediationId:evidence[2],userId:user.id,note:body.note});
+    return result?json(res,201,{evidence:result}):json(res,404,{error:'Remediation not found.'});
    }
    const orgVerify=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/assets\/([0-9a-f-]{36})\/verify$/);
    if(orgVerify&&req.method==='POST'){
