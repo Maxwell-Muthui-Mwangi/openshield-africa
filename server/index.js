@@ -8,6 +8,7 @@ import {evaluate} from './checks.js';
 import {validateTarget,isPublicIPv4,limitWindow} from './safety.js';
 import {query,database} from './database.js';
 import {createOrganization,listOrganizations,organizationMembers,organizationAccess} from './organizations.js';
+import {inviteMember,acceptInvitation,changeMemberRole,addOrganizationAsset,listOrganizationAssets,organizationAudit} from './organization-security.js';
 import {hashPassword,verifyPassword,newToken,sessionHash,sessionCookie,readSessionCookie} from './auth.js';
 import {canonicalHostname,checkDnsOwnership,hashChallenge} from './ownership.js';
 import {consumeLoginBudget,resetSuccessfulAccountBudget} from './login-limit.js';
@@ -160,6 +161,41 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
    if(!role)return json(res,404,{error:'Organization not found.'});
    const result=await dbQuery('SELECT id,name,slug,created_at FROM organizations WHERE id=$1',[orgDetail[1]]);
    return json(res,200,{organization:{...result.rows[0],role}});
+  }
+  // Organization mutations are opt-in for private staging.
+  if(process.env.ORGANIZATIONS_ENABLED==='true'){
+   if(req.url==='/api/organizations/invitations/accept'&&req.method==='POST'){
+    const body=await readBody(req);
+    const accepted=await acceptInvitation(orgPool||database(),{token:body.token,userId:user.id,email:user.email});
+    return accepted?json(res,200,{accepted:true}):json(res,400,{error:'Invalid or expired invitation.'});
+   }
+   const invitation=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/invitations$/);
+   if(invitation&&req.method==='POST'){
+    const body=await readBody(req);
+    const result=await inviteMember(orgPool||database(),{orgId:invitation[1],actorId:user.id,email:body.email,role:body.role});
+    return json(res,201,{invitation:result});
+   }
+   const memberRole=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/members\/([0-9a-f-]{36})\/role$/);
+   if(memberRole&&req.method==='POST'){
+    const body=await readBody(req);
+    const updated=await changeMemberRole(orgPool||database(),{orgId:memberRole[1],actorId:user.id,targetId:memberRole[2],role:body.role});
+    return updated?json(res,200,{updated:true}):json(res,404,{error:'Member not found.'});
+   }
+   const assets=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/assets$/);
+   if(assets&&req.method==='GET'){
+    const rows=await listOrganizationAssets(dbQuery,assets[1],user.id);
+    return rows===null?json(res,404,{error:'Organization not found.'}):json(res,200,{assets:rows});
+   }
+   if(assets&&req.method==='POST'){
+    const body=await readBody(req);
+    const result=await addOrganizationAsset(orgPool||database(),{orgId:assets[1],actorId:user.id,url:body.url});
+    return json(res,201,result);
+   }
+   const audit=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/audit$/);
+   if(audit&&req.method==='GET'){
+    const rows=await organizationAudit(dbQuery,audit[1],user.id);
+    return rows===null?json(res,404,{error:'Organization not found.'}):json(res,200,{events:rows});
+   }
   }
   if(req.url==='/api/domains'&&req.method==='GET'){
    const result=await dbQuery('SELECT id,hostname,verified_at,created_at FROM domains WHERE user_id=$1 ORDER BY created_at DESC',[user.id]);
