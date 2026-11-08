@@ -1,7 +1,4 @@
-import {readFileSync} from 'node:fs';
 import {safeStagingEnvironment} from '../server/release-gate.js';
-import {databaseConfig} from '../server/db-config.js';
-import {smtpConfiguration} from './check-smtp.js';
 
 export function stagingPreflight(env){
  const issues=[...safeStagingEnvironment(env).issues];
