@@ -18,6 +18,7 @@ import {finalizeEmailToken} from './finalize-token.js';
 import {allowEmailRequest} from './mail-limit.js';
 import {validateDeployment} from './deployment.js';
 import {queueAuthEmail} from './outbox.js';
+import {assessOrganizationAsset,organizationReport,updateRemediation} from './organization-assessments.js';
 import {verifyOrganizationAsset,renewOrganizationAsset,organizationDashboard} from './organization-dashboard.js';
 
 const PORT=Number(process.env.PORT||8787);
@@ -168,6 +169,11 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
    const summary=await organizationDashboard(dbQuery,{orgId:dashboard[1],userId:user.id});
    return summary?json(res,200,{dashboard:summary}):json(res,404,{error:'Organization not found.'});
   }
+  const orgReport=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/report$/);
+  if(orgReport&&req.method==='GET'){
+   const result=await organizationReport(dbQuery,{orgId:orgReport[1],userId:user.id});
+   return result?json(res,200,{report:result}):json(res,404,{error:'Organization not found.'});
+  }
   // Organization mutations are opt-in for private staging.
   if(process.env.ORGANIZATIONS_ENABLED==='true'){
    if(req.url==='/api/organizations/invitations/accept'&&req.method==='POST'){
@@ -196,6 +202,18 @@ export function createApp({dbQuery=query,checkOwnership=checkDnsOwnership,runAss
     const body=await readBody(req);
     const result=await addOrganizationAsset(orgPool||database(),{orgId:assets[1],actorId:user.id,url:body.url});
     return json(res,201,result);
+   }
+   const orgAssess=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/assets\/([0-9a-f-]{36})\/assess$/);
+   if(orgAssess&&req.method==='POST'){
+    if(process.env.LOCAL_SCAN_ENABLED!=='true'||process.env.NODE_ENV==='production')return json(res,403,{error:'Organization assessments are disabled outside approved local testing.'});
+    const result=await assessOrganizationAsset(orgPool||database(),{orgId:orgAssess[1],assetId:orgAssess[2],userId:user.id,runAssessment});
+    return result?json(res,201,{assessment:result}):json(res,404,{error:'Organization not found.'});
+   }
+   const orgRemediation=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/remediations\/([0-9a-f-]{36})$/);
+   if(orgRemediation&&req.method==='POST'){
+    const body=await readBody(req);
+    const result=await updateRemediation(dbQuery,{orgId:orgRemediation[1],remediationId:orgRemediation[2],userId:user.id,status:body.status});
+    return result?json(res,200,{remediation:result}):json(res,404,{error:'Remediation not found.'});
    }
    const orgVerify=req.url?.match(/^\/api\/organizations\/([0-9a-f-]{36})\/assets\/([0-9a-f-]{36})\/verify$/);
    if(orgVerify&&req.method==='POST'){
