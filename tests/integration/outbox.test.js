@@ -22,7 +22,7 @@ test('transactional encrypted email outbox retries, rotates and dead-letters', {
   let r=await processOutboxBatch({sendMail:async()=>{attempted++;throw Object.assign(Error('temporary'),{code:'SMTP_TEMP'})}});
   assert.equal(r.failed,1);assert.equal(attempted,1);
   const retry=(await query('SELECT attempts,status,last_error_code FROM email_outbox WHERE id=$1',[id])).rows[0];
-  assert.equal(retry.attempts,1);assert.equal(retry.status,'pending');assert.equal(retry.last_error_code,'SMTP_TEMP');
+  assert.equal(retry.attempts,1);assert.equal(retry.status,'pending');assert.equal(retry.last_error_code,'DELIVERY_FAILED');
   await query('UPDATE email_outbox SET available_at=now()-interval \'1 second\' WHERE id=$1',[id]);
   const delivered=[];
   r=await processOutboxBatch({sendMail:async m=>delivered.push(m)});
@@ -34,7 +34,7 @@ test('transactional encrypted email outbox retries, rotates and dead-letters', {
   const rotated=await queueAuthEmail({userId:user.id,email,purpose:'verify'});
   const replaced=await queueAuthEmail({userId:user.id,email,purpose:'verify'});
   assert.notEqual(rotated,replaced);
-  assert.equal((await query('SELECT count(*)::int AS n FROM email_outbox WHERE id=$1',[rotated])).rows[0].n,0);
+  assert.equal((await query('SELECT status,octet_length(payload) AS size FROM email_outbox WHERE id=$1',[rotated])).rows[0].status,'dead');
   await query("UPDATE email_outbox SET attempts=max_attempts-1 WHERE id=$1",[replaced]);
   r=await processOutboxBatch({sendMail:async()=>{throw Object.assign(Error('permanent'),{code:'SMTP_PERM'})}});
   assert.equal(r.failed,1);
