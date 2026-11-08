@@ -11,7 +11,7 @@ export async function configureReassessment(query,{orgId,assetId,userId,interval
  FROM organization_assets a WHERE a.id=$2 AND a.organization_id=$1
  AND a.verified_at>now()-interval '30 days'
  ON CONFLICT(organization_id,asset_id) DO UPDATE
- SET authorized_by=$3,interval_hours=$4,next_run_at=now()+($4*interval '1 hour'),
+ SET authorized_by=$3,interval_hours=$4,next_run_at=now()+($4::integer*interval '1 hour'),
  enabled=$5,lease_id=NULL,lease_until=NULL,attempts=0,cancelled_at=CASE WHEN $5 THEN NULL ELSE now() END
  RETURNING id,asset_id,interval_hours,next_run_at,enabled`,[orgId,assetId,userId,intervalHours,enabled]);
  if(!r.rows.length)return null;
